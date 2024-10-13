@@ -37,7 +37,7 @@ def create_db(con):
                 "proteins int,"
                 "fats int,"
                 "carbs int,"
-                "date DATE)")
+                "date varchar(255))")
 
 
 class MainWindow(QtWidgets.QWidget):
@@ -47,10 +47,10 @@ class MainWindow(QtWidgets.QWidget):
         self.con = sqlite3.connect("food.db")
         create_db(self.con)
 
-        self.con.create_collation("BINARY", sqlite_nocase_collation)
-        self.con.create_collation("NOCASE", sqlite_nocase_collation)
-
-        self.con.create_function("LIKE", 2, sqlite_like)
+        # self.con.create_collation("BINARY", sqlite_nocase_collation)
+        # self.con.create_collation("NOCASE", sqlite_nocase_collation)
+        #
+        # self.con.create_function("LIKE", 2, sqlite_like)
 
         self.fill_table()
 
@@ -58,7 +58,17 @@ class MainWindow(QtWidgets.QWidget):
         self.setWindowTitle("Трекер для Тора")
         self.setGeometry(100, 100, 800, 600)
 
+        self.tab_widget = QtWidgets.QTabWidget(self)
+
+        self.add_food_tab = QtWidgets.QWidget()
+        self.chart_tab = QtWidgets.QWidget()
+
+        self.tab_widget.addTab(self.add_food_tab, "Добавить блюдо")
+        self.tab_widget.addTab(self.chart_tab, "График калорий")
+
         main_layout = QtWidgets.QVBoxLayout()
+        main_layout.addWidget(self.tab_widget)
+        self.setLayout(main_layout)
 
         self.name_input = QtWidgets.QLineEdit(self)
         self.name_input.setPlaceholderText("Название блюда")
@@ -90,17 +100,34 @@ class MainWindow(QtWidgets.QWidget):
         form_layout.addRow("Дата:", self.date_input)
         form_layout.addWidget(add_button)
 
-        main_layout.addLayout(form_layout)
-
         self.table = QtWidgets.QTableWidget(self)
         self.table.setColumnCount(6)
         self.table.setHorizontalHeaderLabels(['Название', 'Калории', 'Белки', 'Жиры', 'Углеводы', 'Дата'])
         self.table.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.Stretch)
-        main_layout.addWidget(self.table)
+        form_layout.addWidget(self.table)
+
+        self.add_food_tab.setLayout(form_layout)
+
+        fig, ax = plt.subplots()
+        self.canvas = FigureCanvas(fig)
+        self.date_from = QtWidgets.QDateEdit(self)
+
+        self.date_to = QtWidgets.QDateEdit(self)
+        self.date_to.setDate(date.today())
 
         self.show_chart_button = QtWidgets.QPushButton("Показать график", self)
         self.show_chart_button.clicked.connect(self.show_chart)
-        main_layout.addWidget(self.show_chart_button)
+
+        form_layout = QtWidgets.QFormLayout()
+        form_layout.addRow("С этой даты:", self.date_from)
+        form_layout.addRow("До этой даты:", self.date_to)
+        form_layout.addWidget(self.show_chart_button)
+
+        self.chart_layout = QtWidgets.QVBoxLayout()
+        self.chart_layout.addLayout(form_layout)
+        self.chart_layout.addWidget(self.canvas)
+
+        self.chart_tab.setLayout(self.chart_layout)
 
         self.setLayout(main_layout)
 
@@ -110,7 +137,7 @@ class MainWindow(QtWidgets.QWidget):
         proteins = self.proteins_input.text()
         fats = self.fats_input.text()
         carbs = self.carbs_input.text()
-        date = self.date_input.date().toString("yyyy-MM-dd")
+        date = self.date_input.date().toString("yyyyMMdd")
 
         if not all([name, calories, proteins, fats, carbs, date]):
             QtWidgets.QMessageBox.warning(self, "Ошибка", "Заполните все поля")
@@ -144,10 +171,23 @@ class MainWindow(QtWidgets.QWidget):
             self.table.setItem(row_position, 2, QtWidgets.QTableWidgetItem(str(proteins)))
             self.table.setItem(row_position, 3, QtWidgets.QTableWidgetItem(str(fats)))
             self.table.setItem(row_position, 4, QtWidgets.QTableWidgetItem(str(carbs)))
-            self.table.setItem(row_position, 5, QtWidgets.QTableWidgetItem(date))
+            self.table.setItem(row_position, 5, QtWidgets.QTableWidgetItem(date[6:] + '.' + date[4:6] + '.' + date[:4]))
 
     def show_chart(self):
+        date_from = self.date_from.date().toString("yyyyMMdd")
+        date_to = self.date_to.date().toString("yyyyMMdd")
+        print(date_to, date_from)
+        cur = self.con.cursor()
+        food_data = cur.execute(
+            """SELECT name, calories, date FROM dishes WHERE date <= %s AND date >= %s""" % (date_to, date_from))
+        names = []
+        calories = []
+        for [name, calor, _] in food_data.fetchall():
+            names.append(name)
+            calories.append(calor)
+
         fig, ax = plt.subplots()
+        ax.plot(names, calories, marker='o')
         ax.set_xlabel('Блюда')
         ax.set_ylabel('Калории')
         ax.set_title('Динамика калорий')
@@ -155,15 +195,14 @@ class MainWindow(QtWidgets.QWidget):
         plt.xticks(rotation=45)
         plt.tight_layout()
 
-        canvas = FigureCanvas(fig)
+        self.chart_layout.removeWidget(self.canvas)
+        self.canvas = FigureCanvas(fig)
         chart_window = QtWidgets.QWidget()
-        chart_layout = QtWidgets.QVBoxLayout()
-        chart_layout.addWidget(canvas)
-        chart_window.setLayout(chart_layout)
         chart_window.setWindowTitle("Динамика изменения калорий")
         chart_window.resize(600, 400)
-        chart_window.show()
-        canvas.draw()
+        self.canvas.draw()
+
+        self.chart_layout.addWidget(self.canvas)
 
 
 if __name__ == "__main__":
