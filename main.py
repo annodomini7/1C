@@ -6,7 +6,6 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 import re
 import sqlite3
 from datetime import date
-import datetime
 
 
 def sqlite_like(template_, value_):  # эта и последующие функции
@@ -52,6 +51,8 @@ class MainWindow(QtWidgets.QWidget):
         self.con.create_collation("NOCASE", sqlite_nocase_collation)
 
         self.con.create_function("LIKE", 2, sqlite_like)
+
+        self.fill_table()
 
     def initUI(self):
         self.setWindowTitle("Трекер для Тора")
@@ -115,24 +116,35 @@ class MainWindow(QtWidgets.QWidget):
             QtWidgets.QMessageBox.warning(self, "Ошибка", "Заполните все поля")
             return
         cur = self.con.cursor()
-        res = cur.execute("INSERT INTO dishes (name, calories, proteins, fats, carbs, date) VALUES (?, ?, ?, ?, ?, ?)",
-                          (name, int(calories), int(proteins), int(fats), int(carbs), date))
+        cur.execute("INSERT INTO dishes (name, calories, proteins, fats, carbs, date) VALUES (?, ?, ?, ?, ?, ?)",
+                    (name, int(calories), int(proteins), int(fats), int(carbs), date))
+        self.con.commit()
 
-        row_position = self.table.rowCount()
-        self.table.insertRow(row_position)
-        self.table.setItem(row_position, 0, QtWidgets.QTableWidgetItem(name))
-        self.table.setItem(row_position, 1, QtWidgets.QTableWidgetItem(calories))
-        self.table.setItem(row_position, 2, QtWidgets.QTableWidgetItem(proteins))
-        self.table.setItem(row_position, 3, QtWidgets.QTableWidgetItem(fats))
-        self.table.setItem(row_position, 4, QtWidgets.QTableWidgetItem(carbs))
-        self.table.setItem(row_position, 5, QtWidgets.QTableWidgetItem(date))
-
+        self.fill_table()
         self.name_input.clear()
         self.calories_input.clear()
         self.proteins_input.clear()
         self.fats_input.clear()
         self.carbs_input.clear()
         self.date_input.clear()
+
+    def fill_table(self):
+        row_position = self.table.rowCount()
+        while row_position >= 0:
+            self.table.removeRow(row_position)
+            row_position -= 1
+
+        cur = self.con.cursor()
+        food_data = cur.execute("SELECT name, calories, proteins, fats, carbs, date FROM dishes")
+        for [name, calories, proteins, fats, carbs, date] in food_data.fetchall():
+            row_position = self.table.rowCount()
+            self.table.insertRow(row_position)
+            self.table.setItem(row_position, 0, QtWidgets.QTableWidgetItem(name))
+            self.table.setItem(row_position, 1, QtWidgets.QTableWidgetItem(str(calories)))
+            self.table.setItem(row_position, 2, QtWidgets.QTableWidgetItem(str(proteins)))
+            self.table.setItem(row_position, 3, QtWidgets.QTableWidgetItem(str(fats)))
+            self.table.setItem(row_position, 4, QtWidgets.QTableWidgetItem(str(carbs)))
+            self.table.setItem(row_position, 5, QtWidgets.QTableWidgetItem(date))
 
     def show_chart(self):
         fig, ax = plt.subplots()
